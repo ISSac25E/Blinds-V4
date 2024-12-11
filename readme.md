@@ -55,7 +55,7 @@ Continue using this link to build and flash the first example project:
 https://docs.espressif.com/projects/esp8266-rtos-sdk/en/latest/get-started/index.html#get-started-get-esp-idf
 
 ### USING https://stackoverflow.com/a/70629397
-To integrate the MSYS mingw32 terminal into VSCode, follow the instrutions in the link.\
+Integrate the MSYS mingw32 terminal into VSCode:\
 Paste this snippet into the ```settings.json``` file in the following format:
 ```
 "terminal.integrated.profiles.windows": {
