@@ -23,7 +23,7 @@ git clone --recursive https://github.com/espressif/ESP8266_RTOS_SDK.git
 ### USING https://github.com/espressif/ESP8266_RTOS_SDK/issues/785#issuecomment-748691888
 
 Open the ".bash_profile" to update paths.\
-This will be located in: ```"\msys64\home\<USER>\.bash_profile"```\
+This will be located in: ```"\msys32\home\<USER>\.bash_profile"```\
 todo: this dir doesnt exist with clean setup
 
 Add these two lines at the bottom of the file following this format.
@@ -45,7 +45,7 @@ Save the file
 
 
 Open the mingw32.exe terminal. (msys2.exe will not work as python is not recognized)\
-This will be located in ```"\msys64\mingw32.exe"```\
+This will be located in ```"\msys32\mingw32.exe"```\
 Use this command to install requirements:
 ```
 python -m pip install --user -r $IDF_PATH/requirements.txt
