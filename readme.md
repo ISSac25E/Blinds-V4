@@ -56,11 +56,11 @@ https://docs.espressif.com/projects/esp8266-rtos-sdk/en/latest/get-started/index
 
 ### USING https://stackoverflow.com/a/70629397
 To integrate the MSYS mingw32 terminal into VSCode, follow the instrutions in the link.\
-Paste this snippet into the ```settings.json``` file in the following format\
+Paste this snippet into the ```settings.json``` file in the following format:
 ```
 "terminal.integrated.profiles.windows": {
     "msys mingw32": {
-        "path": "C/<PATH TO MSYS>/msys2_shell.cmd",
+        "path": "C:/<PATH TO MSYS>/msys2_shell.cmd",
         "args": [
             "-defterm",
             "-here",
