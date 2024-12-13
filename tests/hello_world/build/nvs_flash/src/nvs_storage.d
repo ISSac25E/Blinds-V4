@@ -1,0 +1,51 @@
+src/nvs_storage.o: \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/nvs_storage.cpp \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/nvs_storage.hpp \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/nvs.hpp \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/include/nvs.h \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/esp8266/include/esp_attr.h \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/esp_common/include/esp_err.h \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/nvs_types.hpp \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/include/nvs_handle.hpp \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/include/nvs.h \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/compressed_enum_table.hpp \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/nvs_page.hpp \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/spi_flash/include/esp_spi_flash.h \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/spi_flash/include/spi_flash.h \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/intrusive_list.h \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/nvs_item_hash_list.hpp \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/partition.hpp \
+ C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/nvs_pagemanager.hpp
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/nvs_storage.hpp:
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/nvs.hpp:
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/include/nvs.h:
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/esp8266/include/esp_attr.h:
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/esp_common/include/esp_err.h:
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/nvs_types.hpp:
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/include/nvs_handle.hpp:
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/include/nvs.h:
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/compressed_enum_table.hpp:
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/nvs_page.hpp:
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/spi_flash/include/esp_spi_flash.h:
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/spi_flash/include/spi_flash.h:
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/intrusive_list.h:
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/nvs_item_hash_list.hpp:
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/partition.hpp:
+
+C:/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/nvs_pagemanager.hpp:
+/c/Users/AVG/Documents/esp_devkit/ESP8266_RTOS_SDK/components/nvs_flash/src/nvs_storage.cpp:
