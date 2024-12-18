@@ -17,6 +17,7 @@
 #include "../../LinkedList/LinkedList.h"
 
 // internal dependencies
+#include "ESP_Mesh_Connection.h"
 
 /*
   This will be the single manager class to handle all connection instances
@@ -24,7 +25,6 @@
 class ESP_Mesh_Master_class
 {
 public:
-  void myfunct();
 };
 
 #endif

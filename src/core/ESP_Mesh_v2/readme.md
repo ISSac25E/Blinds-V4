@@ -12,6 +12,15 @@ This lib will work together with 'PainlessMesh' and add functionality on top of 
   This feature will greatly simplify and optimize sharing states and config data between devices.
 
 Each mesh instance has two types of connections that they can perform: outgoing and incoming connections
+
+The highest level class will be the ```ESP_Mesh_MasterClass```\
+This will contain a single static instance and control all other connections dynamically\
+The next level class will be ```ESP_Mesh_Connection``` which is the base class of both incoming and outgoing connections.\
+Only one ID can be connected for each type of connection. This is to reduce complexity and potential collisions.
+
+```ESP_Mesh_MasterClass``` will do the job of rerouting packets to the correct instance(s) wether incoming or outgoing
+
+
 ```
 ESP_Mesh my_mesh
 painlessMesh mesh;
