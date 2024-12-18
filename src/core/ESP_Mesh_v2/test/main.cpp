@@ -1,10 +1,13 @@
 #include <Arduino.h>
-#include "../ESP_Mesh.h"
+#include "../src/ESP_Mesh.h"
 
-ESP_Mesh mesh;
+linkedList ll;
+ESP_Mesh_Master_class mesh;
 
 void setup()
 {
+  ll.addNode<int>(0, 45);
+  mesh.myfunct();
 }
 
 void loop()
