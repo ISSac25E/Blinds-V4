@@ -14,7 +14,7 @@
 #include <ArduinoJson.h>
 
 // local dependencies
-#include <LinkedList_1.0.3.h>
+#include "../../LinkedList/LinkedList.h"
 
 // internal dependencies
 
@@ -23,6 +23,8 @@
 */
 class ESP_Mesh_Master_class
 {
+public:
+  void myfunct();
 };
 
 #endif
