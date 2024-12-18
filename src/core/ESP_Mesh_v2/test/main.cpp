@@ -1,7 +1,5 @@
 #include <Arduino.h>
-#include "../ESP_Mesh.h"
-
-ESP_Mesh mesh;
+#include <ESP_Mesh.h>
 
 void setup()
 {
