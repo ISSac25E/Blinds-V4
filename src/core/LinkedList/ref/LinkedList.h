@@ -55,7 +55,7 @@ public:
     return addNode<T>(index, &data, sizeof(T));
   }
   template <typename T>
-  bool addNode(uint16_t index, T *data, uint16_t items = 1);
+  bool addNode(uint16_t index, T *data, uint16_t length);
 
   /*
     will delete a single node at designated input
