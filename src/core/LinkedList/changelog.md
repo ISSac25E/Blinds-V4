@@ -1,9 +1,14 @@
 ## changes from v1.0.3
 
+### 12-24-2024
+- made linked list safer with memory alignment
+  raw data storage is still allowed because of its great flexibility
+
 ### 12-22-2024
 - make linked list class iterable to improve search efficiency
 - add functionality to delete node while iterating.\
   all methods in the iterator class are designed for efficiency to prevent redundant traversal
+
 #### example use case:
 ```
 for (auto it = ll.begin(); it != ll.end(); ++it)
