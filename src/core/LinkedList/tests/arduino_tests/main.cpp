@@ -1,6 +1,34 @@
 #include "Arduino.h"
 #include "../../LinkedList.h"
 
+class myClass
+{
+public:
+  myClass()
+  {
+    Serial.println("Constructor called!");
+  }
+
+  ~myClass()
+  {
+    Serial.println("Deconstructor called!");
+  }
+
+  void printVars()
+  {
+    Serial.print(x);
+    Serial.print(", ");
+    Serial.print(y);
+    Serial.print(", ");
+    Serial.println(z);
+  }
+
+private:
+  int x = 157;
+  int y = -6821;
+  float z = 8.98342;
+};
+
 // Arrays for testing
 uint8_t a1[] = {30, 74, 155, 181, 246};
 uint8_t a2[] = {21, 100, 118, 153, 195};
@@ -45,7 +73,7 @@ void printLL(linkedList *ll)
       Serial.print("delete >> ");
 
     printarr(static_cast<uint8_t *>(item.getNodeData()), item.getNodeSize());
-    
+
     if (item.getNodeSize() > 100)
     {
       item.deleteNode();
@@ -77,21 +105,36 @@ void setup()
   Serial.println();
 
   linkedList ll; // Create an instance of linkedList
+  linkedList class_list;
+  linkedList my_list;
+
+  class_list.addNode<myClass>(0);
+  class_list.getNodeData<myClass>(0)->printVars();
+  class_list.deleteNode<myClass>(0);
+
+  my_list.addNode<float>(0);
+  Serial.println(*(my_list.getNodeData<float>(0)));
+
+  // class_list.addNode(0, nullptr, sizeof(myClass)); // allocate
+  // new (class_list.getNodeData(0)) myClass(); // initialize
+  // // reinterpret_cast<myClass*>(class_list.getNodeData(0))->printVars();
+  // class_list.deleteNode(0);
+
 
   printLL(&ll); // Print the initial empty list
 
   // Adding nodes to the linked list
-  ll.appendNode<uint8_t>(a1, sizeof(a1));
-  ll.appendNode<uint8_t>(b1, sizeof(b1));
+  ll.addNode(-1, a1, sizeof(a1));
+  ll.addNode(-1, b1, sizeof(b1));
   printLL(&ll); // Print the list after adding nodes
 
   // Adding more nodes to the list
-  ll.appendNode<uint8_t>(c1, sizeof(c1));
-  ll.appendNode<uint8_t>(b3, sizeof(b3));
+  ll.addNode(-1, c1, sizeof(c1));
+  ll.addNode(-1, b3, sizeof(b3));
 
-  ll.appendNode<uint8_t>(d1, sizeof(d1));
+  ll.addNode(-1, d1, sizeof(d1));
 
-  ll.appendNode<uint8_t>(b2, sizeof(b2));
+  ll.addNode(-1, b2, sizeof(b2));
 
   // Delete node at index 1
   // ll.deleteNode(1);

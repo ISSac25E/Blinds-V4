@@ -5,6 +5,10 @@
   changes from v1.0.3
     - convert to a .h and .cpp file structure
 
+    - implement iterator class for linked list for efficient traversal
+
+    - modify to allow for safe aligned allocation of data along with raw allocation
+
   Purpose of this class is to create a dynamic list where each item can be dynamically created, deleted, and rearranged regardless of position in memory
   List Chart Overview:
 
@@ -26,19 +30,9 @@ class linkedList
 public:
   /*
     safely deallocates entire list.
+    This will NOT call deconstructor's
   */
   ~linkedList();
-
-  template <typename T>
-  bool appendNode(T data)
-  {
-    return addNode<T>(nodeCount(), &data, sizeof(T));
-  }
-  template <typename T>
-  bool appendNode(T *data, uint16_t length)
-  {
-    return addNode<T>(nodeCount(), data, length);
-  }
 
   /*
     will add a single node at designated input
@@ -46,16 +40,21 @@ public:
     If inputted number exceeds the number of nodes in the chain by more than 1,
     the new node will simply be added at the very end
 
-    inputs: (uint16_t) location where to add new node, (T*)or(T) data to be added, (int16_t) data length (MUST BE POSITIVE NON-ZERO)
-    returns: (bool) true if node was successfully allocated and proper input size, false otherwise
+    Two main methods of adding a node.
+     - As a type (object)
+     - As raw memory
+
+    Adding as a type (using a template) will initialize the object (using default constructor) and align properly with memory
+    Adding as a raw data type will give more flexibility but may be misaligned. data must be copied before manipulation on large (> 1-byte) datatypes
   */
-  template <typename T>
-  bool addNode(uint16_t index, T data)
+  bool addNode(uint16_t index, void *data, uint16_t length);
+  inline bool addNode(uint16_t index, uint16_t length)
   {
-    return addNode<T>(index, &data, sizeof(T));
+    return addNode(index, nullptr, length);
   }
+
   template <typename T>
-  bool addNode(uint16_t index, T *data, uint16_t items = 1);
+  bool addNode(uint16_t index);
 
   /*
     will delete a single node at designated input
@@ -69,6 +68,9 @@ public:
   */
   void deleteNode(uint16_t index);
 
+  template <typename T>
+  void deleteNode(uint16_t index);
+
   /*
     method returns type T of the node at designated index
     This pointer is essentially the contents of your node
@@ -78,6 +80,8 @@ public:
     inputs: (uint16_t) location of target node
     returns: (T*) uint8_t array pointer(the contents of the node)
   */
+  void *getNodeData(uint16_t index);
+
   template <typename T>
   T *getNodeData(uint16_t index);
 
@@ -133,22 +137,29 @@ public:
     template <typename T>
     T *getNodeData()
     {
+      struct template_struct : node
+      {
+        T data;
+      };
+
       if (!_current_node)
         return nullptr;
 
-      uint8_t *byteData = reinterpret_cast<uint8_t *>(_current_node);
-      byteData += sizeof(node);
-      return reinterpret_cast<T *>(byteData);
+      template_struct *returnNode = reinterpret_cast<template_struct *>(_current_node);
+      return &(returnNode->data);
     }
 
     void *getNodeData()
     {
+      struct template_struct : node
+      {
+        byte data[0];
+      };
+
       if (!_current_node)
         return nullptr;
 
-      uint8_t *byteData = reinterpret_cast<uint8_t *>(_current_node);
-      byteData += sizeof(node);
-      return reinterpret_cast<void *>(byteData);
+      return reinterpret_cast<void *>(reinterpret_cast<template_struct *>(_current_node)->data);
     }
 
     /*
@@ -204,6 +215,27 @@ public:
       node *next_node = _current_node->nextNode;
 
       delete[] reinterpret_cast<uint8_t *>(_current_node); // << delete as list
+
+      // re-link:
+      _prev_node->nextNode = next_node;
+      _current_node = _prev_node; // this will allow for continued traversal
+    }
+
+    template <typename T>
+    void deleteNode()
+    {
+      struct template_struct : node
+      {
+        T data;
+      };
+
+      if (!_current_node || _current_node == _prev_node)
+        return;
+
+      // temporarily store next node to re-link list
+      node *next_node = _current_node->nextNode;
+
+      delete reinterpret_cast<template_struct *>(_current_node); // delete as object
 
       // re-link:
       _prev_node->nextNode = next_node;
