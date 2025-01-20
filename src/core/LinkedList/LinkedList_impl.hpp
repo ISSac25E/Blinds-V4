@@ -1,5 +1,5 @@
 template <typename T>
-bool linkedList::addNode(uint16_t index)
+T *linkedList::addNode(uint16_t index, uint16_t extra_length)
 {
   struct template_struct : node
   {
@@ -7,13 +7,15 @@ bool linkedList::addNode(uint16_t index)
   };
 
   // allocate memory
-  template_struct *newNode = new (std::nothrow) template_struct;
+  // Use alignof to determine the alignment of the struct. technically, malloc alone is safe enough to allocate as it does so with the largest alignment possible
+  // template_struct *newNode = (template_struct *)aligned_alloc(alignof(template_struct), sizeof(template_struct) + extra_length); // get an undefined reference error here
+  template_struct *newNode = (template_struct *)malloc(sizeof(template_struct) + extra_length);
 
   if (!newNode)
-    return false;
+    return nullptr;
 
-  newNode->length = sizeof(T);
-  
+  newNode->length = sizeof(T) + extra_length;
+
   base_node *storeNode = &_headNode;
 
   // locate target location
@@ -23,7 +25,7 @@ bool linkedList::addNode(uint16_t index)
   // relink list with new node:
   newNode->nextNode = storeNode->nextNode;
   storeNode->nextNode = newNode;
-  return true;
+  return &(newNode->data);
 }
 
 template <typename T>
@@ -45,7 +47,8 @@ void linkedList::deleteNode(uint16_t index)
     template_struct *deleteNode = reinterpret_cast<template_struct *>(temp->nextNode);
     temp->nextNode = temp->nextNode->nextNode; // relink list
 
-    delete deleteNode; // << delete as object. calls deconstructor if any
+    deleteNode->data.~T();
+    free(deleteNode); // << delete
   }
 }
 
@@ -65,7 +68,7 @@ T *linkedList::getNodeData(uint16_t index)
 
   if (temp->nextNode)
   {
-    /* retrieve data as a byte-array */
+    /* retrieve data as a object */
     template_struct *returnNode = reinterpret_cast<template_struct *>(temp->nextNode);
 
     // return as intended data type

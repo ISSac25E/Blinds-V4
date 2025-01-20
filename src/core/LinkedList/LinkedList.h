@@ -41,20 +41,20 @@ public:
     the new node will simply be added at the very end
 
     Two main methods of adding a node.
-     - As a type (object)
+     - As a type (object or struct) (with optional extra raw memory for flex structs)
      - As raw memory
 
-    Adding as a type (using a template) will initialize the object (using default constructor) and align properly with memory
+    Adding as a type (using a template) will NOT initialize the object but align properly with memory. Using the template method will allow the option to allocate with added memory
     Adding as a raw data type will give more flexibility but may be misaligned. data must be copied before manipulation on large (> 1-byte) datatypes
   */
-  bool addNode(uint16_t index, void *data, uint16_t length);
-  inline bool addNode(uint16_t index, uint16_t length)
+  void *addNode(uint16_t index, void *data, uint16_t length);
+  inline void *addNode(uint16_t index, uint16_t length)
   {
     return addNode(index, nullptr, length);
   }
 
   template <typename T>
-  bool addNode(uint16_t index);
+  T *addNode(uint16_t index, uint16_t extra_length = 0);
 
   /*
     will delete a single node at designated input
@@ -68,6 +68,9 @@ public:
   */
   void deleteNode(uint16_t index);
 
+  /*
+    delete with typename will call the deconstructor
+  */
   template <typename T>
   void deleteNode(uint16_t index);
 
@@ -214,7 +217,7 @@ public:
       // temporarily store next node to re-link list
       node *next_node = _current_node->nextNode;
 
-      delete[] reinterpret_cast<uint8_t *>(_current_node); // << delete as list
+      free(_current_node); // << delete
 
       // re-link:
       _prev_node->nextNode = next_node;
@@ -235,7 +238,8 @@ public:
       // temporarily store next node to re-link list
       node *next_node = _current_node->nextNode;
 
-      delete reinterpret_cast<template_struct *>(_current_node); // delete as object
+      reinterpret_cast<template_struct*>(_current_node)->data.~T();
+      free(_current_node); // << delete
 
       // re-link:
       _prev_node->nextNode = next_node;

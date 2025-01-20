@@ -4,9 +4,10 @@
 class myClass
 {
 public:
-  myClass()
+  myClass(int in)
   {
-    Serial.println("Constructor called!");
+    Serial.print("Constructor called! ");
+    Serial.println(in);
   }
 
   ~myClass()

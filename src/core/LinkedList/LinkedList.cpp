@@ -17,18 +17,18 @@ linkedList::~linkedList()
     deleteNode(0);
 }
 
-bool linkedList::addNode(uint16_t index, void *data, uint16_t length)
+void *linkedList::addNode(uint16_t index, void *data, uint16_t length)
 {
   struct template_struct : node
   {
     byte data[0];
   };
 
-  template_struct *newNode;
-  newNode = static_cast<template_struct *>(operator new(sizeof(node) + length, std::nothrow));
+  // template_struct *newNode = (template_struct *)aligned_alloc(alignof(template_struct), sizeof(template_struct) + length); // get an undefined reference error here
+  template_struct *newNode = (template_struct *)malloc(sizeof(template_struct) + length);
 
   if (!newNode)
-    return false;
+    return nullptr;
 
   newNode->length = length;
 
@@ -44,7 +44,7 @@ bool linkedList::addNode(uint16_t index, void *data, uint16_t length)
   // relink list with new node:
   newNode->nextNode = storeNode->nextNode;
   storeNode->nextNode = newNode;
-  return true;
+  return (newNode->data);
 }
 
 void linkedList::deleteNode(uint16_t index)
@@ -57,10 +57,10 @@ void linkedList::deleteNode(uint16_t index)
 
   if (temp->nextNode) // validate if is valid node
   {
-    uint8_t *deleteNode = reinterpret_cast<uint8_t *>(temp->nextNode); // get target node as byte array to delete instead of object.
-    temp->nextNode = temp->nextNode->nextNode;                         // relink list
+    void *deleteNode = /* reinterpret_cast<void *> */ (temp->nextNode); // get target node as byte array to delete instead of object.
+    temp->nextNode = temp->nextNode->nextNode;                          // relink list
 
-    delete[] deleteNode; // << delete as list
+    free(deleteNode); // << delete as void ptr
   }
 }
 
