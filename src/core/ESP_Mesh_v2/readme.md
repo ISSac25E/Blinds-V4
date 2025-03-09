@@ -6,14 +6,14 @@ v1 focused on experimenting with a good design for reliable packet transfer usin
 This lib will work together with 'PainlessMesh' and add functionality on top of it and on top of v1 in two major ways
 
 - This new version will no longer have a dedicated master or slave device.\
-  Each device will be a Slave(incoming connection) while the Masters will simply be Slaves with added responsibilities
+  Each device will begin exactly the same as each other but assume a master/slave state at connection.\
 - This new version will also add the functionality of synced variables across connection pairs.\
-  This feature will greatly simplify and optimize sharing states and config data between devices.\
+  This feature will greatly simplify and optimize reliably sharing states and config data between devices.\
   To remove the possibility of race conditions, each synced variable(group) will be read-only for the subscriber and write-only for the publisher
 
 The highest level class will be the ```ESP_Mesh```\
 This will be a completely static class essentially with only one instance. This instance will control all connections dynamically\
-The next level class will be ```ESP_Mesh_Connection``` which can assume the master or slave role and represent one connection pair.\
+The next level class will be ```ESP_Mesh_Connection```.\
 ```ESP_Mesh``` will do the job of rerouting packets to the correct instance.
 
 ### Transmission Types:

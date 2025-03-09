@@ -104,6 +104,35 @@ private:
   }
 
   /*
+    calculates required buffer size
+  */
+  static inline uint32_t decode_base64_size(const char *c)
+  {
+    if (!c)
+      return 0;
+
+    uint32_t byte_index = 0;
+    uint32_t char_index = 0;
+
+    for (;;)
+    {
+      int8_t y;
+      for (y = 0; y < 4; y++)
+      {
+        if (c[char_index] < '0' || c[char_index] > ('0' + B111111))
+          break;
+        char_index++;
+      }
+
+      if (y > 1)
+        byte_index += (y - 1);
+
+      if (y < 4)
+        return byte_index;
+    }
+  }
+
+  /*
     this will return the absolute different between these two numbers with byte overflow
     is start and end are exactly the same, 0 will be returned*/
   static inline uint8_t byte_diff(uint8_t start, uint8_t end)

@@ -1,9 +1,10 @@
 #include "ESP_Mesh_Connection.h"
 
-ESP_Mesh_Connection::ESP_Mesh_Connection(uint32_t node_id, void (*recvCallback)(const char *, ESP_Mesh_Connection *))
+ESP_Mesh_Connection::ESP_Mesh_Connection(uint32_t node_id, void (*recvCallback)(const char *, ESP_Mesh_Connection *), bool is_master /* = false */)
 {
   _remote_node_id = node_id;
   _recvCallback = recvCallback;
+  _is_master = is_master;
 }
 
 bool ESP_Mesh_Connection::sendPersistentPacket(const char *c, uint8_t packetGroup, uint32_t timeout_ms)
@@ -14,26 +15,26 @@ bool ESP_Mesh_Connection::sendPersistentPacket(const char *c, uint8_t packetGrou
   /*
     get rid of timed out packets first
   */
-  _checkPacketTimers();
+  _packet.checkPacketTimers();
 
   /*
     check how much memory left in queue and push new packet if possible
   */
   uint32_t total_used = 0;
-  for (auto &packet : _packetBuffer)
+  for (auto &packet : _packet._packetBuffer)
   {
     /*
       count only if persistent packet
     */
-    if (packet.getNodeData<packet_base_struct>()->type == PCK_PersistentPacket)
+    if (packet.getNodeData<packet_class::packet_base_struct>()->type == PCK_PersistentPacket)
       total_used++;
   }
 
-  if (total_used >= MAX_PACKET)
+  if (total_used >= _packet.MAX_PACKET)
     return false;
 
   // add new packet to queue
-  persistent_packet_struct *this_packet = _packetBuffer.addNode<persistent_packet_struct>(-1, strlen(c) + 1);
+  packet_class::persistent_packet_struct *this_packet = _packet._packetBuffer.addNode<packet_class::persistent_packet_struct>(-1, strlen(c) + 1);
 
   if (!this_packet)
     return false; // couldn't allocate required memory
@@ -44,7 +45,6 @@ bool ESP_Mesh_Connection::sendPersistentPacket(const char *c, uint8_t packetGrou
   this_packet->isSending = false;
   this_packet->packetGroup = packetGroup;
   strcpy(this_packet->msg, c);
-  return true;
 }
 
 bool ESP_Mesh_Connection::sendSimplePacket(const char *c)
@@ -61,91 +61,13 @@ bool ESP_Mesh_Connection::sendSimplePacket(const char *c)
     char c_msg_tx[measureJson(ESP_Mesh_util::jsonDocTx) + 1];
     serializeJson(ESP_Mesh_util::jsonDocTx, c_msg_tx, sizeof(c_msg_tx));
 
-    Serial.print("TX to: ");
-    Serial.println(_remote_node_id);
-    Serial.println("\t" + String(c_msg_tx));
     ESP_Mesh_util::meshPointer->sendSingle(_remote_node_id, c_msg_tx);
     return true;
   }
   return false;
 }
 
-void ESP_Mesh_Connection::bucket_subscribe(uint8_t bucket_id)
-{
-  /*
-    check if bucket already exists
-  */
-  for (auto &bucket : _subscribedBuckets)
-  {
-    if (bucket.getNodeData<subscribed_bucket_struct>()->bucket_ID == bucket_id)
-    {
-      /*
-        bucket already exists, nothing to subscribe to
-      */
-      return;
-    }
-  }
-
-  /*
-    add new bucket
-  */
-  subscribed_bucket_struct *newBucket = _subscribedBuckets.addNode<subscribed_bucket_struct>(0, 0);
-
-  if (!newBucket)
-    return; // couldn't allocate required memory
-
-  newBucket->bucket_ID = bucket_id;
-  newBucket->bucket_size = 0; // uninitialized bucket. will need to be resized when data is received
-
-  /*
-    find and remove any packets in queue that are requesting this bucket?
-    this should be impossible as deleting a subscribed bucket SHOULD delete all requests as well
-  */
-
-  /*
-    push bucket request into send queue
-  */
-  bucket_packet_struct *newPacket = _packetBuffer.addNode<bucket_packet_struct>(-1, 0);
-  if (!newPacket)
-    return; // couldn't allocate required memory
-
-  newPacket->type = PCK_BucketRequest;
-  newPacket->bucket_ID = bucket_id;
-  newPacket->isSending = false;
-  // newPacket->msg[0]; // empty message, this is the only packet type that doesn't require a message
-}
-
-void *ESP_Mesh_Connection::getSubscribedBucket(uint8_t bucket_id)
-{
-  for (auto &bucket : _subscribedBuckets)
-  {
-    if (bucket.getNodeData<subscribed_bucket_struct>()->bucket_ID == bucket_id)
-      return bucket.getNodeData<subscribed_bucket_struct>()->rx_buffer;
-  }
-  return nullptr;
-}
-int32_t ESP_Mesh_Connection::getSubscribedBucketSize(uint8_t bucket_id)
-{
-  for (auto &bucket : _subscribedBuckets)
-  {
-    if (bucket.getNodeData<subscribed_bucket_struct>()->bucket_ID == bucket_id)
-      return bucket.getNodeData<subscribed_bucket_struct>()->bucket_size;
-  }
-
-  return -1;
-}
-
-void *ESP_Mesh_Connection::getPublishedBucket(uint8_t bucket_id)
-{
-  for (auto &bucket : _publishedBuckets)
-  {
-    if (bucket.getNodeData<published_bucket_struct>()->bucket_ID == bucket_id)
-      return bucket.getNodeData<published_bucket_struct>()->user_buffer;
-  }
-  return nullptr;
-}
-
-void ESP_Mesh_Connection::bucket_publish(uint8_t bucket_id, void *buffer, uint16_t length)
+void ESP_Mesh_Connection::bucket_subscribe(uint8_t bucket_id, void *buffer)
 {
   if (!buffer)
     return;
@@ -153,9 +75,9 @@ void ESP_Mesh_Connection::bucket_publish(uint8_t bucket_id, void *buffer, uint16
   /*
     check if bucket already exists
   */
-  for (auto &bucket : _publishedBuckets)
+  for (auto &bucket : _packet._subscribedBuckets)
   {
-    if (bucket.getNodeData<published_bucket_struct>()->bucket_ID == bucket_id)
+    if (bucket.getNodeData<packet_class::subscribed_bucket_struct>()->bucket_ID == bucket_id)
     {
       /*
         bucket already exists, delete
@@ -168,7 +90,69 @@ void ESP_Mesh_Connection::bucket_publish(uint8_t bucket_id, void *buffer, uint16
   /*
     add new bucket
   */
-  published_bucket_struct *newBucket = _publishedBuckets.addNode<published_bucket_struct>(0, length);
+  packet_class::subscribed_bucket_struct *newBucket = _packet._subscribedBuckets.addNode<packet_class::subscribed_bucket_struct>(0, 0);
+
+  if (!newBucket)
+    return; // couldn't allocate required memory
+
+  newBucket->bucket_ID = bucket_id;
+  newBucket->user_buffer = buffer;
+  newBucket->buffer_size = 0;
+
+  /*
+    find and remove any packets in queue that are requesting this bucket
+  */
+  for (auto &packet : _packet._packetBuffer)
+  {
+    if (packet.getNodeData<packet_class::packet_base_struct>()->type == PCK_BucketRequest &&
+        packet.getNodeData<packet_class::bucket_packet_struct>()->bucket_ID == bucket_id)
+    {
+      /*
+        a packet was found, remove from the queue
+      */
+      if (packet.getNodeData<packet_class::packet_base_struct>()->isSending)
+        (_transmit_PID)++;
+
+      packet.deleteNode();
+    }
+  }
+
+  /*
+    push bucket request into send queue
+  */
+  packet_class::bucket_packet_struct *newPacket = _packet._packetBuffer.addNode<packet_class::bucket_packet_struct>(-1, 0);
+  if (!newPacket)
+    return; // couldn't allocate required memory
+  
+  newPacket->type = PCK_BucketRequest;
+  newPacket->bucket_ID = bucket_id;
+  newPacket->isSending = false;
+}
+
+void ESP_Mesh_Connection::bucket_publish(uint8_t bucket_id, void *buffer, uint16_t length)
+{
+  if (!buffer)
+    return;
+
+  /*
+    check if bucket already exists
+  */
+  for (auto &bucket : _packet._publishedBuckets)
+  {
+    if (bucket.getNodeData<packet_class::published_bucket_struct>()->bucket_ID == bucket_id)
+    {
+      /*
+        bucket already exists, delete
+      */
+      bucket.deleteNode();
+      break; // there should only be one bucket with the same ID
+    }
+  }
+
+  /*
+    add new bucket
+  */
+  packet_class::published_bucket_struct *newBucket = _packet._publishedBuckets.addNode<packet_class::published_bucket_struct>(0, length);
 
   if (!newBucket)
     return; // couldn't allocate required memory
@@ -185,60 +169,42 @@ void ESP_Mesh_Connection::bucket_publish(uint8_t bucket_id, void *buffer, uint16
   /*
     push bucket publish into send queue
   */
-  _forcePushBucketPublish(newBucket);
+  _packet.forcePushBucketPublish(newBucket);
 }
 
 void ESP_Mesh_Connection::run()
 {
   _resourceLock.lock();
 
-  _connection_run();
-  _packet_run();
+  _connection.run();
+  _packet.run();
 
   _resourceLock.unlock();
 }
 
-void ESP_Mesh_Connection::checkBucketPublish()
-{
-  /*
-  check and update all buckets that are being published if needed
-*/
-  for (auto &bucket : _publishedBuckets)
-  {
-    /*
-      compare for bucket changes
-    */
-    published_bucket_struct *this_bucket = bucket.getNodeData<published_bucket_struct>();
-    if (memcmp(this_bucket->tx_buffer, this_bucket->user_buffer, this_bucket->bucket_size))
-    {
-      /*
-        a difference between tx buffer and user buffer was found, force into send queue
-      */
-      _forcePushBucketPublish(this_bucket);
-      // Serial.println("Bucket ID " + String(this_bucket->bucket_ID) + " Pushed to send queue");
-    }
-  }
+void ESP_Mesh_Connection::checkBucketPublish() {
+  _packet.checkBucketPublish();
 }
 
 void ESP_Mesh_Connection::_onDataRecv(uint32_t node_id)
 {
   _resourceLock.lock();
 
-  _connection_onDataRecv(node_id);
-  _packet_onDataRecv(node_id);
+  _connection.onDataRecv(node_id);
+  _packet.onDataRecv(node_id);
 
   _resourceLock.unlock();
 }
 
-void ESP_Mesh_Connection::_connection_run()
+void ESP_Mesh_Connection::connection_class::run()
 {
-  if (_connected)
+  if (_pointer->_connected)
   {
     /*
       Device is connected.
       run heartbeat packets to keep connection alive (only if master)
     */
-    if (_is_master)
+    if (_pointer->_is_master)
     {
       if (millis() - _disconnectTimer >= HEARTBEAT_PACKET_TIMEOUT)
       {
@@ -253,10 +219,7 @@ void ESP_Mesh_Connection::_connection_run()
           char c_msg_tx[measureJson(ESP_Mesh_util::jsonDocTx) + 1];
           serializeJson(ESP_Mesh_util::jsonDocTx, c_msg_tx, sizeof(c_msg_tx));
 
-          Serial.print("TX to: ");
-          Serial.println(_remote_node_id);
-          Serial.println("\t" + String(c_msg_tx));
-          ESP_Mesh_util::meshPointer->sendSingle(_remote_node_id, c_msg_tx);
+          ESP_Mesh_util::meshPointer->sendSingle(_pointer->_remote_node_id, c_msg_tx);
 
           _heartbeatTimer = millis();
         }
@@ -266,7 +229,7 @@ void ESP_Mesh_Connection::_connection_run()
     /*
       run realignment packets
     */
-    if (_packetRealignment)
+    if (_pointer->_packetRealignment)
     {
       if (millis() - _realignmentTimer >= REALIGNMENT_PACKET_POLL)
       {
@@ -275,15 +238,12 @@ void ESP_Mesh_Connection::_connection_run()
         */
         ESP_Mesh_util::jsonDocTx.clear();
         ESP_Mesh_util::jsonDocTx["type"] = PCK_PID_Realignment;
-        ESP_Mesh_util::jsonDocTx["pid"] = _transmit_PID;
+        ESP_Mesh_util::jsonDocTx["pid"] = _pointer->_transmit_PID;
 
         char c_msg_tx[measureJson(ESP_Mesh_util::jsonDocTx) + 1];
         serializeJson(ESP_Mesh_util::jsonDocTx, c_msg_tx, sizeof(c_msg_tx));
 
-        Serial.print("TX to: ");
-        Serial.println(_remote_node_id);
-        Serial.println("\t" + String(c_msg_tx));
-        ESP_Mesh_util::meshPointer->sendSingle(_remote_node_id, c_msg_tx);
+        ESP_Mesh_util::meshPointer->sendSingle(_pointer->_remote_node_id, c_msg_tx);
 
         _realignmentTimer = millis();
       }
@@ -295,9 +255,8 @@ void ESP_Mesh_Connection::_connection_run()
     */
     if (millis() - _disconnectTimer >= DISCONNECT_TIMEOUT)
     {
-      // Serial.println("Disconnection Timeout from " + String(_remote_node_id));
-      _connected = false;
-      _packetRealignment = false; // alignment not needed when reconnecting
+      _pointer->_connected = false;
+      _pointer->_packetRealignment = false; // alignment not needed when reconnecting
       _beaconTimer = millis() - BEACON_PACKET_POLL;
     }
   }
@@ -305,32 +264,33 @@ void ESP_Mesh_Connection::_connection_run()
   {
     /*
       currently disconnected.
-      Send beacon packets to find other devices
+      If slave, wait for a beacon packet
+      If master, periodically send beacon packets
     */
-    if (millis() - _beaconTimer >= BEACON_PACKET_POLL)
+    if (_pointer->_is_master)
     {
-      /*
-        send beacon packet
-      */
-      ESP_Mesh_util::jsonDocTx.clear();
-      ESP_Mesh_util::jsonDocTx["type"] = PCK_Beacon;
+      if (millis() - _beaconTimer >= BEACON_PACKET_POLL)
+      {
+        /*
+          send beacon packet
+        */
+        ESP_Mesh_util::jsonDocTx.clear();
+        ESP_Mesh_util::jsonDocTx["type"] = PCK_Beacon;
 
-      char c_msg_tx[measureJson(ESP_Mesh_util::jsonDocTx) + 1];
-      serializeJson(ESP_Mesh_util::jsonDocTx, c_msg_tx, sizeof(c_msg_tx));
+        char c_msg_tx[measureJson(ESP_Mesh_util::jsonDocTx) + 1];
+        serializeJson(ESP_Mesh_util::jsonDocTx, c_msg_tx, sizeof(c_msg_tx));
 
-      Serial.print("TX to: ");
-      Serial.println(_remote_node_id);
-      Serial.println("\t" + String(c_msg_tx));
-      ESP_Mesh_util::meshPointer->sendSingle(_remote_node_id, c_msg_tx);
+        ESP_Mesh_util::meshPointer->sendSingle(_pointer->_remote_node_id, c_msg_tx);
 
-      _beaconTimer = millis();
+        _beaconTimer = millis();
+      }
     }
   }
 }
 
-void ESP_Mesh_Connection::_connection_onDataRecv(uint32_t node_id)
+void ESP_Mesh_Connection::connection_class::onDataRecv(uint32_t node_id)
 {
-  if (node_id == _remote_node_id)
+  if (node_id == _pointer->_remote_node_id)
   {
     /*
       parse once to save on processing later
@@ -343,7 +303,7 @@ void ESP_Mesh_Connection::_connection_onDataRecv(uint32_t node_id)
     /*
       this will run all the default commands for disconnected state
     */
-    if (!_connected)
+    if (!_pointer->_connected)
     {
       switch (packet_type)
       {
@@ -354,17 +314,12 @@ void ESP_Mesh_Connection::_connection_onDataRecv(uint32_t node_id)
         */
         ESP_Mesh_util::jsonDocTx.clear();
         ESP_Mesh_util::jsonDocTx["type"] = PCK_ConnectionRequest;
-        ESP_Mesh_util::jsonDocTx["pid"] = _transmit_PID;
+        ESP_Mesh_util::jsonDocTx["pid"] = _pointer->_transmit_PID;
 
         char c_msg_tx[measureJson(ESP_Mesh_util::jsonDocTx) + 1];
         serializeJson(ESP_Mesh_util::jsonDocTx, c_msg_tx, sizeof(c_msg_tx));
 
-        Serial.print("TX to: ");
-        Serial.println(_remote_node_id);
-        Serial.println("\t" + String(c_msg_tx));
-        ESP_Mesh_util::meshPointer->sendSingle(_remote_node_id, c_msg_tx);
-
-        // Serial.println("Beacon received from " + String(_remote_node_id));
+        ESP_Mesh_util::meshPointer->sendSingle(_pointer->_remote_node_id, c_msg_tx);
       }
       break;
       case PCK_ConnectionRequest:
@@ -377,53 +332,34 @@ void ESP_Mesh_Connection::_connection_onDataRecv(uint32_t node_id)
             update local PID with received PID
           */
 
-          _local_PID = static_cast<uint8_t>(raw_pid); // set local PID to received PID
+          _pointer->_local_PID = static_cast<uint8_t>(raw_pid); // set local PID to received PID
 
-          _remote_PID = _transmit_PID; // reset remote PID to transmit PID
-          _packetRealignment = false;  // alignment not needed
+          _pointer->_remote_PID = _pointer->_transmit_PID; // reset remote PID to transmit PID
+          _pointer->_packetRealignment = false;            // alignment not needed
 
           /*
             mark connected
           */
-          _connected = true;
-          _disconnectTimer = millis();
-          _heartbeatTimer = millis();
-
-          /*
-            master is the device that accepts the connection ack
-          */
+          _pointer->_connected = true;
 
           if (!is_ack)
           {
             /*
               send response back
-              this is not going to be the master
             */
-            _is_master = false;
-
             ESP_Mesh_util::jsonDocTx.clear();
             ESP_Mesh_util::jsonDocTx["type"] = PCK_ConnectionRequest;
             ESP_Mesh_util::jsonDocTx["ack"] = true;
-            ESP_Mesh_util::jsonDocTx["pid"] = _transmit_PID; // send PID going to send next
+            ESP_Mesh_util::jsonDocTx["pid"] = _pointer->_transmit_PID; // send PID going to send next
 
             char c_msg_tx[measureJson(ESP_Mesh_util::jsonDocTx) + 1];
             serializeJson(ESP_Mesh_util::jsonDocTx, c_msg_tx, sizeof(c_msg_tx));
 
-            Serial.print("TX to: ");
-            Serial.println(_remote_node_id);
-            Serial.println("\t" + String(c_msg_tx));
-            ESP_Mesh_util::meshPointer->sendSingle(_remote_node_id, c_msg_tx);
-            // Serial.println("Connection request received from " + String(_remote_node_id));
+            ESP_Mesh_util::meshPointer->sendSingle(_pointer->_remote_node_id, c_msg_tx);
           }
           else
           {
-            /*
-              no need to send anything back
-              mark as the master device
-            */
-
-            _is_master = true;
-            // Serial.println("Connection response received from " + String(_remote_node_id));
+            // no need to send anything back
           }
         }
         break;
@@ -454,10 +390,7 @@ void ESP_Mesh_Connection::_connection_onDataRecv(uint32_t node_id)
           char c_msg_tx[measureJson(ESP_Mesh_util::jsonDocTx) + 1];
           serializeJson(ESP_Mesh_util::jsonDocTx, c_msg_tx, sizeof(c_msg_tx));
 
-          Serial.print("TX to: ");
-          Serial.println(_remote_node_id);
-          Serial.println("\t" + String(c_msg_tx));
-          ESP_Mesh_util::meshPointer->sendSingle(_remote_node_id, c_msg_tx);
+          ESP_Mesh_util::meshPointer->sendSingle(_pointer->_remote_node_id, c_msg_tx);
         }
         else
         {
@@ -486,15 +419,14 @@ void ESP_Mesh_Connection::_connection_onDataRecv(uint32_t node_id)
 
               send a valid response
             */
-            // Serial.println("PID Realignment request received from " + String(_remote_node_id));
             bool error = false;
-            if (ESP_Mesh_util::byte_diff(_local_PID, raw_pid) < 128)
+            if (ESP_Mesh_util::byte_diff(_pointer->_local_PID, raw_pid) < 128)
             {
               /*
                 PID is within acceptable range
                 set local PID to received PID
               */
-              _local_PID = static_cast<uint8_t>(raw_pid);
+              _pointer->_local_PID = static_cast<uint8_t>(raw_pid);
             }
             else
             {
@@ -503,7 +435,6 @@ void ESP_Mesh_Connection::_connection_onDataRecv(uint32_t node_id)
                 flag error so transmitter knows
               */
               error = true;
-              // Serial.println("\tPID error");
             }
 
             /*
@@ -523,19 +454,15 @@ void ESP_Mesh_Connection::_connection_onDataRecv(uint32_t node_id)
             char c_msg_tx[measureJson(ESP_Mesh_util::jsonDocTx) + 1];
             serializeJson(ESP_Mesh_util::jsonDocTx, c_msg_tx, sizeof(c_msg_tx));
 
-            Serial.print("TX to: ");
-            Serial.println(_remote_node_id);
-            Serial.println("\t" + String(c_msg_tx));
-            ESP_Mesh_util::meshPointer->sendSingle(_remote_node_id, c_msg_tx);
+            ESP_Mesh_util::meshPointer->sendSingle(_pointer->_remote_node_id, c_msg_tx);
           }
           else
           {
-            // Serial.println("PID Realignment response received from " + String(_remote_node_id));
             /*
               this is a response packet
               check that we are actually expecting a realignment and that is matches exactly
             */
-            if (_packetRealignment && raw_pid == _transmit_PID)
+            if (_pointer->_packetRealignment && raw_pid == _pointer->_transmit_PID)
             {
               /*
                 check for error flag
@@ -546,8 +473,7 @@ void ESP_Mesh_Connection::_connection_onDataRecv(uint32_t node_id)
                   couldn't realign PID, critical error
                   try reconnecting
                 */
-                _connected = false;
-                // Serial.println("\tRealignment error, disconnecting");
+                _pointer->_connected = false;
               }
               else
               {
@@ -556,9 +482,8 @@ void ESP_Mesh_Connection::_connection_onDataRecv(uint32_t node_id)
                   update our local PID
                   set realignment to false
                 */
-                _remote_PID = _transmit_PID;
-                _packetRealignment = false;
-                // Serial.println("\tRealignment Success");
+                _pointer->_local_PID = _pointer->_transmit_PID;
+                _pointer->_packetRealignment = false;
               }
             }
           }
@@ -569,7 +494,7 @@ void ESP_Mesh_Connection::_connection_onDataRecv(uint32_t node_id)
   }
 }
 
-void ESP_Mesh_Connection::_packet_run()
+void ESP_Mesh_Connection::packet_class::run()
 {
   /*
     bucket management handle:
@@ -579,14 +504,14 @@ void ESP_Mesh_Connection::_packet_run()
   /*
     packet queue handle:
   */
-  if (_connected)
+  if (_pointer->_connected)
   {
     /*
       check that at least one node exists to send
       Also check that we are NOT currently realigning packets
     */
     packet_base_struct *packet = _packetBuffer.getNodeData<packet_base_struct>(0);
-    if (packet && !_packetRealignment)
+    if (packet && !_pointer->_packetRealignment)
     {
       /*
         check timeout of the first packet
@@ -602,10 +527,9 @@ void ESP_Mesh_Connection::_packet_run()
             check if it was currently sending, if so, adjust transmit_PID
           */
           if (packet->isSending)
-            (_transmit_PID)++; // prepare transmit PID for next packet
+            (_pointer->_transmit_PID)++; // prepare transmit PID for next packet
 
           _packetBuffer.deleteNode(0); // remove packet
-          // Serial.println("Packet timeout");
 
           /*
             nothing else to do.
@@ -624,7 +548,7 @@ void ESP_Mesh_Connection::_packet_run()
         /*
           currently not sending packet, begin sending one
         */
-        if (ESP_Mesh_util::byte_diff(_remote_PID, _transmit_PID) < 128)
+        if (ESP_Mesh_util::byte_diff(_pointer->_remote_PID, _pointer->_transmit_PID) < 128)
         {
           /*
             valid transmit PID, although it could be on the very edge
@@ -642,8 +566,7 @@ void ESP_Mesh_Connection::_packet_run()
             outside of sendable range
             get packet realignment first
           */
-          _packetRealignment = true;
-          // Serial.println("PID Realignment needed while sending");
+          _pointer->_packetRealignment = true;
           return; // nothing else to do while realigning
         }
       }
@@ -667,7 +590,7 @@ void ESP_Mesh_Connection::_packet_run()
           */
           ESP_Mesh_util::jsonDocTx.clear();
           ESP_Mesh_util::jsonDocTx["type"] = packet->type;
-          ESP_Mesh_util::jsonDocTx["pid"] = _transmit_PID;
+          ESP_Mesh_util::jsonDocTx["pid"] = _pointer->_transmit_PID;
 
           /*
             construct according to wether it is a persistent packet or a bucket packet
@@ -688,7 +611,7 @@ void ESP_Mesh_Connection::_packet_run()
             // error!
             // unknown packet type!
             _packetBuffer.deleteNode(0);
-            // _transmit_PID++; // prepare PID for next packet? not really needed since it should be impossible to send a packet with an invalid type
+            // _pointer->_transmit_PID++; // prepare PID for next packet? not really needed since it should be impossible to send a packet with an invalid type
             return; // get out, nothing else to do for now
             break;
           }
@@ -696,10 +619,7 @@ void ESP_Mesh_Connection::_packet_run()
           char c_msg_tx[measureJson(ESP_Mesh_util::jsonDocTx) + 1];
           serializeJson(ESP_Mesh_util::jsonDocTx, c_msg_tx, sizeof(c_msg_tx));
 
-          Serial.print("TX to: ");
-          Serial.println(_remote_node_id);
-          Serial.println("\t" + String(c_msg_tx));
-          ESP_Mesh_util::meshPointer->sendSingle(_remote_node_id, c_msg_tx);
+          ESP_Mesh_util::meshPointer->sendSingle(_pointer->_remote_node_id, c_msg_tx);
         }
       }
     }
@@ -709,21 +629,18 @@ void ESP_Mesh_Connection::_packet_run()
         no packets to send OR Currently realigning PID's
         check that we won't need a realignment when we start sending one
       */
-      if (!_packetRealignment)
+      if (!_pointer->_packetRealignment)
       {
-        if (_remote_PID != _transmit_PID)
-        {
-          _packetRealignment = true;
-          // Serial.println("PID Realignment needed while idling");
-        }
+        if (_pointer->_remote_PID != _pointer->_transmit_PID)
+          _pointer->_packetRealignment = true;
       }
     }
   }
 }
 
-void ESP_Mesh_Connection::_packet_onDataRecv(uint32_t node_id)
+void ESP_Mesh_Connection::packet_class::onDataRecv(uint32_t node_id)
 {
-  if (node_id == _remote_node_id && _connected)
+  if (node_id == _pointer->_remote_node_id && _pointer->_connected)
   {
     /*
       parse once to save on processing later
@@ -731,15 +648,17 @@ void ESP_Mesh_Connection::_packet_onDataRecv(uint32_t node_id)
     uint8_t packet_type = ESP_Mesh_util::jsonDocRx["type"] | (uint8_t)PCK_Null;
     // bool is_ack = ESP_Mesh_util::jsonDocRx["ack"] | false; // not needed for any packet_class types of packets
     int16_t raw_pid = ESP_Mesh_util::jsonDocRx["pid"] | (int16_t)-1;
-    int16_t bucket_id = ESP_Mesh_util::jsonDocRx["bck"] | (int16_t)-1;
+    int16_t bucket_id = ESP_Mesh_util::jsonDocRx["bid"] | (int16_t)-1;
     bool pid_error = ESP_Mesh_util::jsonDocRx["err"] | false;
-    const char *msg = ESP_Mesh_util::jsonDocRx["msg"];
+    const char *msg = ESP_Mesh_util::jsonDocRx["msg"] | nullptr;
 
     switch (packet_type)
     {
     case PCK_SimplePacket:
-      if (_recvCallback)
-        _recvCallback(ESP_Mesh_util::jsonDocRx["msg"].as<const char *>(), this);
+      if (_pointer->_recvCallback)
+      {
+        _pointer->_recvCallback(ESP_Mesh_util::jsonDocRx["msg"].as<const char *>(), _pointer);
+      }
       break;
     case PCK_PersistentPacket:
       /*
@@ -748,9 +667,9 @@ void ESP_Mesh_Connection::_packet_onDataRecv(uint32_t node_id)
       */
       if (raw_pid > -1 && raw_pid < 256) // PID required in packet
       {
-        if (_handlePacketID_ack(raw_pid))
-          if (_recvCallback)
-            _recvCallback(ESP_Mesh_util::jsonDocRx["msg"].as<const char *>(), this);
+        if (handlePacketID_ack(raw_pid))
+          if (_pointer->_recvCallback)
+            _pointer->_recvCallback(ESP_Mesh_util::jsonDocRx["msg"].as<const char *>(), _pointer);
       }
       break;
     case PCK_BucketRequest:
@@ -762,9 +681,8 @@ void ESP_Mesh_Connection::_packet_onDataRecv(uint32_t node_id)
       if (raw_pid > -1 && raw_pid < 256 &&   // PID required in packet
           bucket_id > -1 && bucket_id < 256) // Bucket ID required in packet
       {
-        if (_handlePacketID_ack(raw_pid))
+        if (handlePacketID_ack(raw_pid))
         {
-          // Serial.println("Bucket request received from " + String(_remote_node_id));
           /*
             valid packet received
             check if we have the correct requested bucket ID and force push update to queue
@@ -787,12 +705,10 @@ void ESP_Mesh_Connection::_packet_onDataRecv(uint32_t node_id)
           */
           if (this_bucket)
           {
-            // Serial.println("\tBucket ID " + String(this_bucket->bucket_ID) + " Pushed to send queue");
-            _forcePushBucketPublish(this_bucket);
+            forcePushBucketPublish(this_bucket);
           }
           else
           {
-            // Serial.println("\tBucket ID " + String(bucket_id) + " not found, sending empty bucket");
             /*
               set up temporary bucket with no size to push to send queue
             */
@@ -804,7 +720,7 @@ void ESP_Mesh_Connection::_packet_onDataRecv(uint32_t node_id)
             temp_bucket.user_buffer = temp_byte;
 
             this_bucket = &temp_bucket;
-            _forcePushBucketPublish(this_bucket);
+            forcePushBucketPublish(this_bucket);
           }
         }
       }
@@ -817,9 +733,8 @@ void ESP_Mesh_Connection::_packet_onDataRecv(uint32_t node_id)
       if (raw_pid > -1 && raw_pid < 256 &&   // PID required in packet
           bucket_id > -1 && bucket_id < 256) // Bucket ID required in packet
       {
-        if (_handlePacketID_ack(raw_pid))
+        if (handlePacketID_ack(raw_pid))
         {
-          // Serial.println("Bucket publish received from " + String(_remote_node_id));
           /*
             valid packet received
 
@@ -841,30 +756,10 @@ void ESP_Mesh_Connection::_packet_onDataRecv(uint32_t node_id)
           */
           if (this_bucket)
           {
-            // Serial.println("\tBucket ID " + String(this_bucket->bucket_ID) + " Updated: " + String(this_bucket->bucket_size) + " : " + String(ESP_Mesh_util::decode_base64_size(msg)));
-            /*
-              calculate the size of bucket and resize subscribe bucket if needed
-            */
-            if (this_bucket->bucket_size != ESP_Mesh_util::decode_base64_size(msg))
-            {
-              // Serial.println("\tBucket size mismatch, resizing to " + String(ESP_Mesh_util::decode_base64_size(msg)));
-              // resize buffer
-              for (auto &bucket : _subscribedBuckets)
-                if (bucket.getNodeData<subscribed_bucket_struct>()->bucket_ID == bucket_id)
-                {
-                  bucket.deleteNode();
-                  break;
-                }
 
-              this_bucket = _subscribedBuckets.addNode<subscribed_bucket_struct>(0, ESP_Mesh_util::decode_base64_size(msg));
-              if (!this_bucket)
-                return; // couldn't allocate required memory
-
-              this_bucket->bucket_ID = bucket_id;
-            }
-
-            // get size of buffer and dump decoded data into internal buffer
-            this_bucket->bucket_size = ESP_Mesh_util::decode_base64(msg, this_bucket->rx_buffer);
+            // get size of buffer and dump decoded data into user buffer
+            // will handle null references correctly
+            this_bucket->buffer_size = ESP_Mesh_util::decode_base64(msg, this_bucket->user_buffer);
           }
         }
       }
@@ -873,35 +768,33 @@ void ESP_Mesh_Connection::_packet_onDataRecv(uint32_t node_id)
       /*
         received ack packet
         check if currently sending something that expects an ack packet.
-        Check the received PID matches what we are sending
+        Check the received PID matdhs what we are sending
         PID required
       */
       if (raw_pid > -1 && raw_pid < 256) // PID found in packet
       {
         packet_base_struct *packet = _packetBuffer.getNodeData<packet_base_struct>(0);
 
-        if (packet && packet->isSending && raw_pid == _transmit_PID)
+        if (packet && packet->isSending && raw_pid == _pointer->_transmit_PID)
         {
-          // Serial.println("Ack received from " + String(_remote_node_id) + " for PID " + String(raw_pid));
           /*
             everything checks out, make sure no error was found
           */
           if (pid_error)
           {
-            // Serial.println("\tError found in packet");
             /*
               receiver did not accept the packet ID, get realignment
               if realignment fails to set PID also, force reconnect
             */
-            _packetRealignment = true;
+            _pointer->_packetRealignment = true;
           }
           else
           {
-            _remote_PID = raw_pid; // update local PID
-            (_remote_PID)++;       // increment
+            _pointer->_local_PID = raw_pid; // update local PID
+            (_pointer->_local_PID)++;       // increment
 
-            // update transmit for next packet. This is essentially (_transmit_PID)++;
-            _transmit_PID = _remote_PID;
+            // update transmit for next packet. This is essentially (_pointer->_transmit_PID)++;
+            _pointer->_transmit_PID = _pointer->_local_PID;
 
             // delete packet
             _packetBuffer.deleteNode(0);
@@ -913,7 +806,7 @@ void ESP_Mesh_Connection::_packet_onDataRecv(uint32_t node_id)
   }
 }
 
-void ESP_Mesh_Connection::_checkPacketTimers()
+void ESP_Mesh_Connection::packet_class::checkPacketTimers()
 {
   /*
     check all persistent packets within the queue and remove all timed out packets
@@ -925,13 +818,12 @@ void ESP_Mesh_Connection::_checkPacketTimers()
       persistent_packet_struct *this_packet = packet.getNodeData<persistent_packet_struct>();
       if (this_packet->timeout && millis() - this_packet->timer >= this_packet->timeout)
       {
-        // Serial.println("Packet timeout");
         /*
           timeout reached, remove packet
           check if it was currently sending, if so, adjust transmit_PID
         */
         if (packet.getNodeData<packet_base_struct>()->isSending)
-          (_transmit_PID)++; // prepare transmit PID for next packet
+          (_pointer->_transmit_PID)++; // prepare transmit PID for next packet
 
         packet.deleteNode();
       }
@@ -939,7 +831,28 @@ void ESP_Mesh_Connection::_checkPacketTimers()
   }
 }
 
-void ESP_Mesh_Connection::_forcePushBucketPublish(published_bucket_struct *bucket)
+void ESP_Mesh_Connection::packet_class::checkBucketPublish()
+{
+  /*
+    check and update all buckets that are being published if needed
+  */
+  for (auto &bucket : _publishedBuckets)
+  {
+    /*
+      compare for bucket changes
+    */
+    published_bucket_struct *this_bucket = bucket.getNodeData<published_bucket_struct>();
+    if (!memcmp(this_bucket->tx_buffer, this_bucket->user_buffer, this_bucket->bucket_size))
+    {
+      /*
+        a difference between tx buffer and user buffer was found, force into send queue
+      */
+      forcePushBucketPublish(this_bucket);
+    }
+  }
+}
+
+void ESP_Mesh_Connection::packet_class::forcePushBucketPublish(published_bucket_struct *bucket)
 {
   /*
     remove any other instances of the same bucket from send queue and
@@ -963,7 +876,7 @@ void ESP_Mesh_Connection::_forcePushBucketPublish(published_bucket_struct *bucke
         a packet was found, remove from the queue
       */
       if (packet.getNodeData<packet_base_struct>()->isSending)
-        (_transmit_PID)++;
+        (_pointer->_transmit_PID)++;
 
       packet.deleteNode();
     }
@@ -986,7 +899,7 @@ void ESP_Mesh_Connection::_forcePushBucketPublish(published_bucket_struct *bucke
   memcpy(newPacket->msg, encodedBucket, sizeof(encodedBucket));
 }
 
-bool ESP_Mesh_Connection::_handlePacketID_ack(uint8_t raw_pid)
+bool ESP_Mesh_Connection::packet_class::handlePacketID_ack(uint8_t raw_pid)
 {
   bool is_new_msg = false;  // flag true if message is received first time and valid
   bool isError_PID = false; // check if this is duplicate packet or a error
@@ -995,17 +908,17 @@ bool ESP_Mesh_Connection::_handlePacketID_ack(uint8_t raw_pid)
     check that this PID is within acceptable range before accepting the packet
     |-----_local_PID - - - Acceptable Range - - - _local_PID + 127------|
   */
-  if (ESP_Mesh_util::byte_diff(_local_PID, raw_pid) < 128)
+  if (ESP_Mesh_util::byte_diff(_pointer->_local_PID, raw_pid) < 128)
   {
-    _local_PID = raw_pid; // increment. rollover at byte size
-    (_local_PID)++;       // only accept next packets.
+    _pointer->_local_PID = raw_pid; // increment. rollover at byte size
+    (_pointer->_local_PID)++;       // only accept next packets.
 
     is_new_msg = true;
   }
   /*
     check if raw_pid is just a duplicate packet. Thats not an error
   */
-  else if (ESP_Mesh_util::byte_diff(_local_PID, raw_pid) != 255)
+  else if (ESP_Mesh_util::byte_diff(_pointer->_local_PID, raw_pid) != 255)
   {
     /*
       unrecognized packet, signal error
@@ -1025,10 +938,7 @@ bool ESP_Mesh_Connection::_handlePacketID_ack(uint8_t raw_pid)
   char c_msg_tx[measureJson(ESP_Mesh_util::jsonDocTx) + 1];
   serializeJson(ESP_Mesh_util::jsonDocTx, c_msg_tx, sizeof(c_msg_tx));
 
-  Serial.print("TX to: ");
-  Serial.println(_remote_node_id);
-  Serial.println("\t" + String(c_msg_tx));
-  ESP_Mesh_util::meshPointer->sendSingle(_remote_node_id, c_msg_tx);
+  ESP_Mesh_util::meshPointer->sendSingle(_pointer->_remote_node_id, c_msg_tx);
 
   return is_new_msg;
 }

@@ -31,6 +31,15 @@ for (auto &item : ll) // CRITICAL, must use '&' otherwise a copy of the iterator
 }
 ```
 
+Here is an example of how the range based loop would be expanded WITH THE '&':
+```
+for (linkedList::Iterator it = ll.begin(); it != ll.end(); ++it)
+  {
+    linkedList::Iterator &item = *it;
+    
+    // do stuff with item ...
+  }
+```
 
 ### 12-21-2024
 - convert to a .h and .cpp file structure

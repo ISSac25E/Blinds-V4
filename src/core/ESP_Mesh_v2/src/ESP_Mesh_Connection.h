@@ -18,13 +18,14 @@
 class ESP_Mesh_Connection
 {
   friend class ESP_Mesh;
+  struct published_bucket_struct; // forward declaration
 
 public:
   /*
     This is where the behavior of the connection will be determined
     The connection will be setup as a master or slave device
   */
-  ESP_Mesh_Connection(uint32_t node_id, void (*recvCallback)(const char *, ESP_Mesh_Connection *), bool is_master = false);
+  ESP_Mesh_Connection(uint32_t node_id, void (*recvCallback)(const char *, ESP_Mesh_Connection *));
 
   /*
     not really required since no fancy pointers are used.
@@ -36,7 +37,7 @@ public:
     send persistent packet.
     input a null-terminated character buffer
 
-    TODO: include bucket values?
+    TODO: include group values?
     add a timeout for when packet context becomes irelevent. timeout = 0 will indicate no timeout
   */
   bool sendPersistentPacket(const char *, uint8_t packetGroup, uint32_t timeout_ms);
@@ -50,14 +51,29 @@ public:
   bool sendSimplePacket(const char *);
 
   /*
-    subscribe to a bucket id and provide the target buffer for data received
+    subscribe to a bucket id
+    buffer for the bucket is managed internally
   */
-  void bucket_subscribe(uint8_t bucket_id, void *buffer);
+  void bucket_subscribe(uint8_t bucket_id);
+
+  /*
+    access methods for subscribed buckets
+    -1 or nullptr are returned in the event of a missing subscribed bucket
+  */
+  void *getSubscribedBucket(uint8_t bucket_id);
+  int32_t getSubscribedBucketSize(uint8_t bucket_id);
 
   /*
     publish a bucket id and provide the source buffer for data to transmit
+    call each time the buffer size or location changes
   */
   void bucket_publish(uint8_t bucket_id, void *buffer, uint16_t length);
+
+  /*
+    get pointer for published bucket.
+    returns null pointer if bucket is not found
+  */
+  void *getPublishedBucket(uint8_t bucket_id);
 
   /*
     run connection
@@ -65,10 +81,7 @@ public:
   void run();
 
   /*
-    checks change status of all buckets and updates accordingly
-    This is not really used as it can eat into CPU resources unless if called only when needed
-
-    Each bucket should contain a timer that will keep track of when to check for changes
+    checks change status of all buckets and updates only if needed
   */
   void checkBucketPublish();
 
@@ -77,17 +90,31 @@ public:
   */
   bool isConnected() { return _connected; }
 
-  uint32_t getRemoteId()
-  {
-    return _remote_node_id;
-  }
+  uint32_t getRemoteId() { return _remote_node_id; }
 
 private:
+  /*
+    connection constants
+  */
+  const uint32_t BEACON_PACKET_POLL = 10000;
+  const uint32_t HEARTBEAT_PACKET_TIMEOUT = 5000;
+  const uint32_t HEARTBEAT_PACKET_POLL = 300;
+  const uint32_t DISCONNECT_TIMEOUT = 8000;
+  const uint32_t REALIGNMENT_PACKET_POLL = 300;
+
+  /*
+    packet constants
+  */
+  const uint8_t MAX_PACKET = 10;            // declare max number of persistent packets allowed to hold
+  const uint32_t SEND_PACKET_POLL = 300;    // how often a missed packet will attempt to send
+  const uint32_t BUCKET_COMPARE_POLL = 100; // how often published buckets are checked for changes
+
   // resource lock. Will crash if another thread attempts to use resources.
   // to do: implement spinlocks or mutex's instead of crash
   ESP_Mesh_util::rscSync _resourceLock{};
 
   // determines if this connection instance behaves as master or slave
+  // this is determined at connection
   bool _is_master;
 
   // /*
@@ -123,6 +150,37 @@ private:
   bool _packetRealignment = false;
 
   /*
+    timers:
+      _disconnectTimer is only updated during conenction and heartbeat packets
+      while it makes perfect sense to update this timer during packet transfers or PID realignments,
+      The disconnect time MUST match both devices.
+      For the sake of consistency and safety, the disconnect timer is only reset during connection and heartbeats
+  */
+  /*
+    connection timers
+  */
+  uint32_t _beaconTimer = 0;
+  uint32_t _disconnectTimer = 0;
+  uint32_t _realignmentTimer = 0;
+  uint32_t _heartbeatTimer = 0;
+
+  /*
+    packet timers:
+  */
+  uint32_t _sendPacketTimer = 0;
+  uint32_t _bucketCompareTimer = 0;
+
+  /*
+    linkedlists for various functions
+      - packetbuffer will contain all persistent and eternal packets
+      - Bucket lists will contain all the subscribed and published buckets.
+        These will contain all buffers, identifiers and flags for each bucket
+  */
+  linkedList _packetBuffer;
+  linkedList _subscribedBuckets;
+  linkedList _publishedBuckets;
+
+  /*
     callback for user when new packets come
   */
   void (*_recvCallback)(const char *, ESP_Mesh_Connection *) = nullptr;
@@ -131,6 +189,80 @@ private:
     received data will be assumed to be a JSON object located in the static mesh master class
   */
   void _onDataRecv(uint32_t node_id);
+  void _connection_onDataRecv(uint32_t node_id);
+  void _packet_onDataRecv(uint32_t node_id);
+
+  void _connection_run();
+  void _packet_run();
+
+  void _checkPacketTimers();
+
+  /*
+    instead of checking for timers, this will force and update on a specific bucket.
+    useful with first time publishes and requests
+  */
+  void _forcePushBucketPublish(published_bucket_struct *bucket);
+
+  /*
+    take raw pid and handle response.
+    adjust pid values as necessary
+
+    returns true if new and valid packet
+  */
+  bool _handlePacketID_ack(uint8_t raw_pid);
+
+  // take published bucket pointer and push to queue. remove other instances of the same bucket
+  void _pushBucketPublish(published_bucket_struct *bucket);
+
+  /*
+    This is stored into a linked list and pulled when ready to send out
+    One of the extended struct is stored in the linkedlist.
+    Determining which one can be done by checking the base struct packet 'type'
+  */
+  /*
+    once transmit PID don't match, the packet will be marked as transmitted
+  */
+  struct packet_base_struct
+  {
+    uint8_t type = PCK_Null;
+
+    /*
+      a structure flag is choosen instead of a global flag primarily for easy and safe iteration
+    */
+    bool isSending = false;
+  };
+
+  struct persistent_packet_struct : packet_base_struct
+  {
+    uint8_t packetGroup = 0; // default group
+    uint32_t timeout = 0;
+    uint32_t timer = 0;
+    char msg[]; // flexible message buffer
+  };
+
+  struct bucket_packet_struct : packet_base_struct
+  {
+    uint8_t bucket_ID = 0;
+    char msg[]; // flexible message buffer. not needed for requests
+  };
+
+  /*
+    this is used to keep track of buckets and when a change occurs
+  */
+  struct subscribed_bucket_struct
+  {
+    uint8_t bucket_ID = 0;
+    uint16_t bucket_size = 0;
+    byte rx_buffer[]; // flexible message buffer
+  };
+
+  struct published_bucket_struct
+  {
+    uint8_t bucket_ID = 0;
+    uint16_t bucket_size = 0;
+    void *user_buffer = nullptr;
+    byte tx_buffer[]; // flexible message buffer
+  };
 
   /*
     enum for consist packet types:
@@ -148,163 +280,6 @@ private:
     PCK_BucketPublish = 8,     // 8 = bucket publish
     PCK_PacketAck = 9          // 9 = packet ack
   };
-
-  /*
-    this class will maintain the connection and reconnect when possible
-    This will also handle PID realigning
-  */
-  class connection_class
-  {
-  public:
-    const uint32_t BEACON_PACKET_POLL = 10000;
-    const uint32_t HEARTBEAT_PACKET_TIMEOUT = 5000;
-    const uint32_t HEARTBEAT_PACKET_POLL = 300;
-    const uint32_t DISCONNECT_TIMEOUT = 8000;
-    const uint32_t REALIGNMENT_PACKET_POLL = 300;
-
-    connection_class(ESP_Mesh_Connection *p) : _pointer(p) {}
-
-    void run();
-    void onDataRecv(uint32_t node_id);
-
-    /*
-      timers:
-        _disconnectTimer is only updated during conenction and heartbeat packets
-        while it makes perfect sense to update this timer during packet transfers or PID realignments,
-        The disconnect time MUST match both devices.
-        For the sake of consistency and safety, the disconnect timer is only reset during connection and heartbeats
-    */
-    uint32_t _beaconTimer = 0;
-    uint32_t _disconnectTimer = 0;
-    uint32_t _realignmentTimer = 0;
-    uint32_t _heartbeatTimer = 0;
-    uint32_t _sendPacketTimer = 0;
-
-    ESP_Mesh_Connection *_pointer;
-  };
-  connection_class _connection{this};
-
-  /*
-    this class will manage all packets going in and out.
-    This will also handle the buckets
-  */
-  class packet_class
-  {
-  public:
-    struct published_bucket_struct; // forward declaration
-
-    const uint8_t MAX_PACKET = 10;            // declare max number of persistent packets allowed to hold
-    const uint32_t SEND_PACKET_POLL = 300;    // how often a missed packet will attempt to send
-    const uint32_t BUCKET_COMPARE_POLL = 100; // how often published buckets are checked for changes
-
-    packet_class(ESP_Mesh_Connection *p) : _pointer(p) {}
-    void run();
-    void onDataRecv(uint32_t node_id);
-
-    void checkPacketTimers();
-
-    void forcePushBucketPublish(published_bucket_struct *bucket);
-
-    /*
-      checks change status of all buckets and updates accordingly
-      This is not really used as it can eat into CPU resources unless if called only when needed
-
-      (edit: single global timer is enough) Each bucket should contain a timer that will keep track of when to check for changes
-    */
-    void checkBucketPublish();
-
-    /*
-      instead of checking for timers, this will force and update on a specific bucket.
-      useful with first time publishes and requests
-    */
-    // void bucketPublish(uint8_t bucket_ID);
-
-    // void removeBucketPublish(uint8_t bucket_ID);
-
-    /*
-      take raw pid and handle response.
-      adjust pid values as necessary
-
-      returns true if new and valid packet
-    */
-    bool handlePacketID_ack(uint8_t raw_pid);
-
-    /*
-      timers:
-    */
-    uint32_t _sendPacketTimer = 0;
-    uint32_t _bucketCompareTimer = 0;
-
-    /*
-      linkedlists for various functions
-        - packetbuffer will contain all persistent and eternal packets
-        - Bucket lists will contain all the receive and sent buckets. These will contain important timers and for compare
-    */
-    linkedList _packetBuffer;
-    linkedList _subscribedBuckets;
-    linkedList _publishedBuckets;
-
-    /*
-      This is stored into a linked list and pulled when ready to send out
-      One of the extended struct is stored in the linkedlist.
-      Determining which one can be done by checking the base struct packet 'type'
-    */
-    /*
-      once transmit PID don't match, the packet will be marked as transmitted
-    */
-    struct packet_base_struct
-    {
-      uint8_t type = PCK_Null;
-
-      /*
-        a structure flag is choosen instead of a global flag primarily for easy and safe iteration
-      */
-      bool isSending = false;
-    };
-
-    struct persistent_packet_struct : packet_base_struct
-    {
-      uint8_t packetGroup = 0; // default group
-      uint32_t timeout = 0;
-      uint32_t timer = 0;
-      char msg[]; // flexible message buffer
-    };
-
-    struct bucket_packet_struct : packet_base_struct
-    {
-      uint8_t bucket_ID = 0;
-      char msg[]; // flexible message buffer
-    };
-
-    /*
-      this is used to keep track of buckets and when a change occurs
-    */
-    struct subscribed_bucket_struct
-    {
-      uint8_t bucket_ID = 0;
-      uint16_t buffer_size = 0;
-      void *user_buffer = nullptr;
-    };
-
-    struct published_bucket_struct
-    {
-      uint8_t bucket_ID = 0;
-      uint16_t bucket_size = 0;
-      void *user_buffer = nullptr;
-
-      // will work on a global timer instead
-      // uint32_t timer = 0;
-      // uint32_t change_timeout = 0;
-
-      byte tx_buffer[]; // flexible message buffer
-    };
-
-    // take published bucket pointer and push to queue. remove other instances of the same bucket
-    void pushBucketPublish(published_bucket_struct *bucket);
-
-    ESP_Mesh_Connection *_pointer;
-  };
-  packet_class _packet{this};
 };
 
 #endif

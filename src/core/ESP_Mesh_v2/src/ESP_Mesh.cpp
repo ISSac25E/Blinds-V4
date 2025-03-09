@@ -3,6 +3,7 @@
 // initialize pointer so there are no invalid dereferencing:
 linkedList ESP_Mesh::_classList;
 ESP_Mesh_util::rscSync ESP_Mesh::_resourceLock; // TODO: implement
+ESP_Mesh_Connection *(*ESP_Mesh::_newConnCallback)(uint32_t) = nullptr;
 
 void ESP_Mesh::init(painlessMesh *m)
 {
@@ -21,14 +22,16 @@ void ESP_Mesh::run()
   if (!ESP_Mesh_util::meshPointer) // cant be nullptr
     return;
 
+  ESP_Mesh_util::meshPointer->update(); // update mesh
+
   for (auto &connection : _classList)
     connection.getNodeData<ESP_Mesh_Connection>()->run();
 }
 
-void ESP_Mesh::addConnection(uint32_t node_id, void (*recvCallback)(const char *, ESP_Mesh_Connection *), bool is_master /*  = false */)
+ESP_Mesh_Connection *ESP_Mesh::addConnection(uint32_t node_id, void (*recvCallback)(const char *, ESP_Mesh_Connection *))
 {
   if (!ESP_Mesh_util::meshPointer) // cant be nullptr
-    return;
+    return nullptr;
 
   /*
     delete any existing connections
@@ -38,13 +41,16 @@ void ESP_Mesh::addConnection(uint32_t node_id, void (*recvCallback)(const char *
   /*
     create new connection at a new node
   */
-  if (!_classList.addNode<ESP_Mesh_Connection>(0))
-    return;
+  ESP_Mesh_Connection *connection = _classList.addNode<ESP_Mesh_Connection>(-1);
+  if (!connection)
+    return nullptr; // failed to allocate memory
 
   /*
     initialize new connection using placement new
   */
-  new (_classList.getNodeData<ESP_Mesh_Connection>(0)) ESP_Mesh_Connection(node_id, recvCallback, is_master);
+  new (connection) ESP_Mesh_Connection(node_id, recvCallback);
+
+  return connection;
 }
 
 void ESP_Mesh::removeConnectionIndex(uint16_t connection_index)
@@ -109,8 +115,20 @@ linkedList *ESP_Mesh::getConnections()
   return &_classList;
 }
 
+void ESP_Mesh::checkBucketPublish()
+{
+  /*
+    check and update all buckets that are being published if needed
+  */
+  for (auto &connection : _classList)
+    connection.getNodeData<ESP_Mesh_Connection>()->checkBucketPublish();
+}
+
 void ESP_Mesh::_onDataRecv(uint32_t node_id, String msg)
 {
+  Serial.print("RX from: ");
+  Serial.println(node_id);
+  Serial.println("\t" + msg);
   if (!ESP_Mesh_util::meshPointer) // cant be nullptr
     return;
 
@@ -123,12 +141,20 @@ void ESP_Mesh::_onDataRecv(uint32_t node_id, String msg)
     return;
   }
 
-  for (auto &connection : _classList)
+  ESP_Mesh_Connection *connection = getConnection(node_id);
+  if (connection)
   {
-    if (connection.getNodeData<ESP_Mesh_Connection>()->_remote_node_id == node_id)
+    connection->_onDataRecv(node_id);
+  }
+  else
+  {
+    if (_newConnCallback)
     {
-      // forward message to connection instance
-      connection.getNodeData<ESP_Mesh_Connection>()->_onDataRecv(node_id);
+      connection = _newConnCallback(node_id);
+      if (connection)
+      {
+        connection->_onDataRecv(node_id);
+      }
     }
   }
 }

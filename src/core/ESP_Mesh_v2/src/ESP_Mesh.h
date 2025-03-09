@@ -27,6 +27,19 @@
 #error "painlessMesh_MOD_mesh_h_189 not implemented"
 #endif
 
+// #ifndef painlessMesh_MOD_configuration_h_20
+// #error "painlessMesh_MOD_configuration_h_20 not implemented"
+// #endif
+// #ifndef painlessMesh_MOD_configuration_h_23
+// #error "painlessMesh_MOD_configuration_h_23 not implemented"
+// #endif
+// #ifndef painlessMesh_MOD_configuration_h_25
+// #error "painlessMesh_MOD_configuration_h_25 not implemented"
+// #endif
+// #ifndef painlessMesh_MOD_configuration_h_28
+// #error "painlessMesh_MOD_configuration_h_28 not implemented"
+// #endif
+
 /*
   This will be the single manager class to handle all connection instances
   This is a static class with no instantiatable members
@@ -43,6 +56,14 @@ public:
   static void init(painlessMesh *);
 
   /*
+    setup a callback for new unexpected connections
+  */
+  static void onNewConnection(ESP_Mesh_Connection *(*newConnCallback)(uint32_t node_id))
+  {
+    _newConnCallback = newConnCallback;
+  }
+
+  /*
     run all connections instances and clean up tasks
   */
   static void run();
@@ -51,11 +72,9 @@ public:
     create a new connection.
     set target device id and packet receive callback
 
-    set as master or slave(default)
-
-    setting node_id as 0 and slave will create a headless slave
+    returns newly created instance
   */
-  static void addConnection(uint32_t node_id, void (*recvCallback)(const char *, ESP_Mesh_Connection *), bool is_master = false);
+  static ESP_Mesh_Connection *addConnection(uint32_t node_id, void (*recvCallback)(const char *, ESP_Mesh_Connection *));
 
   /*
     remove a connection at index of connection list
@@ -91,14 +110,18 @@ public:
   */
   static linkedList *getConnections();
 
+  /*
+    runs bucket publish on all connections instances
+  */
+  static void checkBucketPublish();
+
 private:
   /* resource lock to create thread safety */
   static ESP_Mesh_util::rscSync _resourceLock;
 
   /* contains all class pointers for each slave device: */
   static linkedList _classList;
-
-  static void _runBeacon();
+  static ESP_Mesh_Connection *(*_newConnCallback)(uint32_t node_id);
 
   /* callback function for painlessMesh
      this can simply invoke the callback functions from every connection instance */
